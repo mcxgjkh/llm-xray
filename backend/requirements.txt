@@ -1,0 +1,11 @@
+# LLM-Xray backend runtime
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+httpx>=0.28,<1
+numpy>=1.26,<3
+scikit-learn>=1.5,<2
+psutil>=6.0,<8
+pywebview>=5.4,<7
+
+# Optional lens channel. Install with: pip install -r backend/requirements-lens.txt
+# torch, transformers, umap-learn are imported lazily; the app runs without them.

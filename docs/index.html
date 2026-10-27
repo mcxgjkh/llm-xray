@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="LLM-Xray 本地 LLM 观测台技术文档：快速开始、运行时与观测通道、可解释性方法、限制与版本说明。">
+<title>LLM-Xray 技术文档 v1.2.0</title>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<a class="skip" href="#overview">跳到正文</a>
+
+<div class="shell">
+<aside class="sidebar" id="sidebar" aria-label="文档导航">
+  <div class="brand">
+    <p class="brand-name">LLM<span>-</span>Xray</p>
+    <p class="brand-sub">本地 LLM 观测台<br>技术文档</p>
+    <a class="version-badge" href="#versions">v1.2.0</a>
+  </div>
+
+  <details class="toc" id="toc" open>
+    <summary>目录</summary>
+    <nav>
+      <p class="nav-group">概览</p>
+      <a href="#overview">项目概览</a>
+      <a href="#quickstart">快速开始</a>
+      <p class="nav-group">使用</p>
+      <a href="#interface">界面与操作</a>
+      <a href="#sampling">采样参数与概率云</a>
+      <a href="#panels">观测面板</a>
+      <a href="#native">原生精确</a>
+      <a href="#performance">性能建议</a>
+      <p class="nav-group">原理</p>
+      <a href="#architecture">运行时与观测通道</a>
+      <a href="#interpretability">可解释性方法</a>
+      <p class="nav-group">数据</p>
+      <a href="#privacy">隐私与数据</a>
+      <a href="#limitations">限制与排错</a>
+      <p class="nav-group">维护</p>
+      <a href="#versions">版本与发布</a>
+      <a href="#docs">文档索引</a>
+    </nav>
+  </details>
+
+  <div class="side-foot">
+    <div class="swatches" aria-hidden="true">
+      <span class="swatch swatch-ground"></span>
+      <span class="swatch swatch-ink"></span>
+      <span class="swatch swatch-accent"></span>
+      <span class="swatch swatch-olive"></span>
+    </div>
+    深炭 / 羊皮纸 / 铜 / 橄榄<br>
+    可离线打开，无外部资源。
+  </div>
+</aside>
+
+<main class="main" id="top">
+  <header class="page-head">
+    <p class="kicker">LOCAL INFERENCE OBSERVATORY / 1.2.0</p>
+    <h1>LLM-Xray <span class="thin">技术文档</span></h1>
+    <p class="lede">暖色的本地 LLM 观测台。LM Studio 实时遥测、可选的替代透镜、以及进程内
+      原生精确通道并排显示：概率云、注意力、Tuned Lens、残差与 3D 语义投影，全部在本机完成，
+      不上传会话。</p>
+    <p class="meta-line">Windows 10/11 · pywebview + WebView2 · FastAPI · React / TypeScript / Three.js<br>
+      LM Studio 0.4.x · Python 3.11 · Node.js 22</p>
+    <div class="app-links">
+      <a class="btn" href="http://127.0.0.1:8765">打开应用（8765）</a>
+      <a class="btn btn-quiet" href="http://127.0.0.1:5173">开发版界面（5173）</a>
+      <a class="btn btn-quiet" href="USAGE.md">使用说明（Markdown）</a>
+    </div>
+  </header>
+
+  <article>
+    <section id="overview">
+      <h2>项目概览</h2>
+      <p>LLM-Xray 把三种数据来源分开显示：LM Studio 提供的<strong>真实</strong> Token 流、
+        <code>top_logprobs</code>、TTFT、tok/s 与用量；一个可选的独立小模型提供的
+        <strong>替身</strong>内部状态；以及一个可选的进程内<strong>原生精确</strong>通道，
+        生成与观测共用同一次前向（<code>surrogate=false</code>）。</p>
+      <p>LM Studio 模式下的透镜通道默认关闭，开启后也不会影响真实 Token 流，所有替身数据都带
+        <span class="tag">surrogate</span> 标注；原生精确模式的数据带“精确张量”标注，表示它与生成
+        来自同一个本地模型。</p>
+
+      <div class="cards">
+        <div class="card">
+          <h4>真实遥测</h4>
+          <p>来自你正在使用的 LM Studio 模型：Token、top-k 概率、TTFT、tok/s、结束原因与用量。</p>
+        </div>
+        <div class="card">
+          <h4>替代透镜</h4>
+          <p>来自另一个小模型：内部状态的可视化近似，用于观察趋势，不是目标模型的内部真相。</p>
+        </div>
+        <div class="card">
+          <h4>原生精确</h4>
+          <p>在进程内运行本地 HF 模型，生成与张量同一次前向；默认 Qwen2.5-0.5B，CPU 较慢。</p>
+        </div>
+        <div class="card">
+          <h4>本地优先</h4>
+          <p>只监听 127.0.0.1，无云 API，不上传会话；模型、记忆库与缓存都在本机目录。</p>
+        </div>
+      </div>
+
+      <div class="edge">
+        <span class="note-title">必须先知道的边界</span>
+        <p>LM Studio 的 HTTP API 不暴露隐藏状态、逐层注意力或 MLP 输出，部分流式响应甚至不返回
+          <code>top_logprobs</code>。LM Studio 模式下的注意力热图、Tuned Lens、残差、稀疏特征与
+          3D 点云来自一个独立小模型（默认 <code>Qwen/Qwen2.5-0.5B-Instruct</code>），不能当作目标
+          模型的内部状态。原生精确模式解决的是“本地模型张量可得”，但它运行的是你加载的模型，
+          不是 LM Studio 里的 8B 模型，除非显式加载相同权重。</p>
+      </div>
+
+      <h3>进入应用</h3>
+      <ol>
+        <li>启动 LM Studio，加载 <code>deepseek-r1-distill-llama-8b</code>，开启本地服务器
+          （默认 <code>http://127.0.0.1:1234</code>）；或跳过，使用原生精确模式。</li>
+        <li>在项目根目录运行 <code>python desktop\launcher.py</code>（发布版）或
+          <code>scripts\dev.ps1</code>（开发版）。</li>
+        <li>顶栏“引擎”选择 <code>LM Studio</code>、<code>原生精确</code> 或 <code>演示</code>。
+          原生精确首次使用需在设置页点“加载原生模型”。</li>
+        <li>用桌面窗口访问；开发版可直接打开 <a href="http://127.0.0.1:5173">http://127.0.0.1:5173</a>。
+          本页顶部的按钮在服务未启动时会显示连接失败，先启动应用即可。</li>
+      </ol>
+
+    </section>
+
+    <section id="quickstart">
+      <h2>快速开始（Windows）</h2>
+      <h3>前置条件</h3>
+      <ul>
+        <li>Windows 10/11，Edge WebView2 运行时（安装 LM Studio 或 Edge 时通常已具备）。</li>
+        <li>Python 3.11；Node.js 22（仅开发与构建前端时需要）。</li>
+        <li>LM Studio 0.4.x，本地服务器默认端口 1234。</li>
+        <li>可选透镜/原生精确通道需要 PyTorch 与 Transformers，见下文。</li>
+      </ul>
+
+      <h3>1. 准备 LM Studio</h3>
+      <p>在 LM Studio 中加载 <code>deepseek-r1-distill-llama-8b</code>，打开
+        <code>Developer</code> 页签启动本地服务器，确认地址为
+        <code>http://127.0.0.1:1234</code>。可以在浏览器访问
+        <code>http://127.0.0.1:1234/v1/models</code> 验证。启动 LLM-Xray 或读取模型列表不会加载
+        模型，只有点击发送才会发起生成。若实际流没有返回 <code>top_logprobs</code>，概率云会为空，
+        界面会提示切换到原生精确模式。</p>
+
+      <h3>2. 安装依赖</h3>
+      <pre><code>python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+npm --prefix apps\desktop install</code></pre>
+
+      <h3>3. 启动开发环境</h3>
+      <pre><code>powershell -ExecutionPolicy Bypass -File scripts\dev.ps1</code></pre>
+      <p>后端 <code>127.0.0.1:8765</code>，Vite <code>127.0.0.1:5173</code>，脚本会打印两个地址。</p>
+
+      <h3>4. 构建并运行桌面版</h3>
+      <pre><code>powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+python desktop\launcher.py</code></pre>
+      <p>启动器会启动本地后端（默认 <code>127.0.0.1:8765</code>），等待健康检查通过后打开原生窗口。
+        常用参数：<code>--port</code>、<code>--browser</code>、<code>--no-window</code>、
+        <code>--reload</code>。启动器日志在 <code>data/server.log</code>。</p>
+
+      <h3>可选：启用替代透镜 / 原生精确</h3>
+      <pre><code>pip install -r backend\requirements-lens.txt
+powershell -ExecutionPolicy Bypass -File scripts\fetch_lens_model.ps1</code></pre>
+      <p>应用不会自动下载模型；下载脚本会尝试 Hugging Face、hf-mirror 与 ModelScope，权重默认放入
+        <code>models/lens/</code>。替代透镜在 LM Studio 模式下使用；原生精确模式复用同一份本地
+        权重，在顶栏切换引擎并在设置页加载。Tuned Lens 首次校准结果会缓存到
+        <code>data/cache/</code>，之后直接复用。</p>
+
+      <div class="note">
+        <span class="note-title">没有 LM Studio 的时候</span>
+        <p>在对话窗空状态点击“演示模式”（需要先新建对话回到空状态），用后端本地合成数据查看布局
+          与图表。演示数据不是真实模型输出，不能用于分析。应用内“技术文档”页可直接阅读
+          <code>docs/*.md</code>。</p>
+      </div>
+    </section>
+
+    <section id="interface">
+      <h2>界面与操作</h2>
+      <p>界面由左侧窄导航轨、顶栏、中部工作区、右侧对话窗与底部时间轴组成。左轨图标按钮悬停显示
+        名称；顶栏“引擎”选择 LM Studio / 原生精确 / 演示，旁边是模型选择、连接/加载状态、
+        会话 id 与耗时。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>页面</th><th>内容</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>观测台</td><td>概率云、透镜阶梯、解码树、注意力热图、残差贡献、KV 映射、稀疏特征</td></tr>
+            <tr><td>注意力</td><td>焦点层逐头注意力与头功能分类</td></tr>
+            <tr><td>向量空间</td><td>3D 语义投影、隐状态摘要、稀疏特征、KV 映射</td></tr>
+            <tr><td>记忆宫殿</td><td>本地记忆检索、分数明细、索引管理与 KV 映射</td></tr>
+            <tr><td>时间回放</td><td>当前会话步骤表、历史会话、导出</td></tr>
+            <tr><td>技术文档 / 设置</td><td>应用内阅读 Markdown；推理引擎、连接、透镜/原生模型、采样默认值、界面开关与关于</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>对话窗</h3>
+      <ul>
+        <li>拖拽对话窗左侧分隔条调整宽度（窗口足够宽时约 320 到 680 像素），宽度会被记住。</li>
+        <li>对话窗标题栏的折叠按钮可收起；设置页提供“收起对话窗”与“重置对话窗宽度”。</li>
+        <li>对话窗标题栏提供“导出 JSONL”：桌面版打开系统保存对话框，浏览器版回退 Blob 下载，
+          底部显示导出结果提示。</li>
+        <li>生成中可随时停止；已生成的 Token 与会话数据保留；思考内容默认折叠，回答生成后可复制。</li>
+        <li>对话窗内“采样”折叠面板可调温度、Top-P、Top-K、重复惩罚与最大输出，修改只影响显示
+          重算与下一次请求。</li>
+      </ul>
+
+      <h3>操作方式</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>操作</th><th>方式</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>发送消息</td><td><kbd>Enter</kbd></td></tr>
+            <tr><td>输入换行</td><td><kbd>Shift</kbd> + <kbd>Enter</kbd></td></tr>
+            <tr><td>切换引擎</td><td>顶栏“引擎”下拉框</td></tr>
+            <tr><td>调整对话窗宽度</td><td>拖拽对话窗左侧分隔条</td></tr>
+            <tr><td>切换页面</td><td>点击左侧导航轨图标</td></tr>
+            <tr><td>选择步骤 / 节点</td><td>点击步骤行、解码树节点；聚焦后按 <kbd>Enter</kbd></td></tr>
+            <tr><td>回放</td><td>底部时间轴的播放与前后步按钮</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>v1.2.0 没有全局快捷键约定；以界面按钮与上表为准。</p>
+    </section>
+
+    <section id="sampling">
+      <h2>采样参数与概率云</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>参数</th><th>默认值</th><th>界面范围</th><th>作用</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>temperature</td><td>0.7</td><td>0.05 到 2</td><td>缩放 logits，越高分布越平</td></tr>
+            <tr><td>top_p</td><td>0.95</td><td>0.05 到 1</td><td>核采样，累计概率不超过 p 的候选</td></tr>
+            <tr><td>top_k</td><td>40</td><td>1 到 100</td><td>只保留概率最高的 k 个候选</td></tr>
+            <tr><td>repetition_penalty</td><td>1.05</td><td>1 到 1.5</td><td>按最近 64 个 Token 的出现次数惩罚重复</td></tr>
+            <tr><td>max_tokens</td><td>4096</td><td>256 到 8192，步进 256</td><td>单次生成上限；仍受模型上下文限制</td></tr>
+            <tr><td>seed</td><td>null</td><td>协议字段，无输入框</td><td>可选随机种子，取决于 LM Studio 支持情况</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>v1.0.0 的默认上限是 512，长回答会被截断；v1.2.0 改为 4096 并提供“最大输出”滑块。旧版本
+        保存在本地存储里的 512 或未设置值会一次性迁移到 4096。即使调大上限，LM Studio 仍可能受
+        模型上下文窗口或显存限制提前结束。</p>
+
+      <p>后端把模型原始 top-k log-prob 发给前端；修改参数后，前端用<strong>同一组</strong>原始分布
+        重算 Softmax、Top-P、Top-K 与重复惩罚，不需要重新请求模型，所以滑块响应是即时的。</p>
+
+      <div class="note">
+        <span class="note-title">下一 Token 生效</span>
+        <p>参数修改只影响显示重算与<strong>下一次请求</strong>。已经生成的 Token 由 LM Studio 用旧参数
+          采样，无法追溯修改，界面会明确标注“下一 Token 生效”。若已生成 Token 不在当前 top-k
+          内，概率显示 <code>—</code>，不会伪造数值。</p>
+      </div>
+
+      <p>概率云每个 Token 一帧，显示 top-k 候选、概率、排名、熵与选中 Token 概率。概率是截断后重新
+        归一化的结果：top-k 之外的词不可见，因此不要比较绝对概率，只能比较候选之间的相对结构。</p>
+    </section>
+
+    <section id="panels">
+      <h2>观测面板</h2>
+
+      <h3>观测台</h3>
+      <p>一页同时放下概率云、透镜阶梯、解码树、注意力热图、残差贡献、KV 映射与稀疏特征探针。
+        “观测注记”会明确标注数据来源：LM Studio + 替代透镜，或原生精确张量。</p>
+      <ul>
+        <li>概率云：每步 top-k 候选、概率、熵与选中 Token；拖动采样参数时即时重算。</li>
+        <li>透镜阶梯：3 个代表性层的 Tuned Lens 或 Logit Lens top-k（含最后一层），点层号设为焦点层。</li>
+        <li>解码树：按步组织已生成 Token，点击节点跳到该步，回放时与时间轴联动。</li>
+        <li>注意力热图：焦点层的上下文分配，可切换层与头。</li>
+        <li>残差贡献：铜色为 attention、橄榄色为 MLP 的 signed logit 贡献柱，附 L2 范数。</li>
+        <li>KV 映射：按块显示 KV 缓存占用与容量估算。</li>
+        <li>稀疏特征探针：当前 Token 激活的 MLP 神经元方向与强度，标注“非 SAE”。</li>
+      </ul>
+
+      <h3>注意力页 <span class="tag">surrogate</span> <span class="tag">exact</span></h3>
+      <p>行是当前 Token，列是上下文 Token。可切换焦点层、单个头或平均行，并查看头功能分类：
+        <code>previous-token</code>、<code>local</code>、<code>syntactic</code>、
+        <code>entity</code>、<code>global</code>、<code>diffuse</code>。分类来自统计量启发式，
+        不是真值标签。实时数据只带焦点层的逐头行，其余层只有平均行。</p>
+
+      <h3>Tuned Lens 与 Logit Lens <span class="tag">surrogate</span> <span class="tag">exact</span></h3>
+      <p>Tuned Lens 为每层训练一个仿射 translator，把该层隐藏状态翻译到最终隐藏状态，再应用最终
+        LayerNorm 与 <code>lm_head</code> 解码。首次使用以 <code>docs/</code>、<code>memory/</code>
+        与 README/CHANGELOG 中的短句为校准语料，用岭回归闭式解训练，结果缓存到
+        <code>data/cache/tuned_lens_&lt;model&gt;.pt</code>，之后启动直接复用；校准完成前显示 Logit
+        Lens 作为对照，并显示该层 top-1 与校准目标的一致率 <code>agreement</code>。原生精确模式下
+        这些张量来自生成模型的同一次前向，不再是替代模型。</p>
+
+      <h3>向量空间页 <span class="tag">surrogate</span> <span class="tag">exact</span></h3>
+      <p>3D 语义投影收集当前观测模型 Prompt 与生成 Token 的最终层隐状态（最多 256 点），后台每
+        8 个 Token 重新拟合 UMAP；不足 8 点用 PCA，再不足用确定性伪投影。页面同时提供当前步
+        16 维隐状态摘要、稀疏特征与 KV 映射。局部邻域有意义，坐标不能跨模型、跨刷新或跨会话比较。</p>
+
+      <h3>记忆宫殿</h3>
+      <p>数据源为 <code>memory/*.md</code>，混合检索 = 字符 3-gram BM25 + 本地 LM Studio embedding
+        余弦（默认权重 0.55 / 0.45）。召回结果展示余弦、BM25、混合分与命中词；两个开关分别控制
+        “生成时检索”和“注入提示”，默认只展示不注入。页面可重建索引，并显示文档数、片段数与
+        KV 映射。</p>
+
+      <h3>时间回放与 JSONL 导出</h3>
+      <p>会话以每步一行写入 <code>data/sessions/&lt;id&gt;.jsonl</code>，另存
+        <code>&lt;id&gt;.meta.json</code>。时间回放页可查看当前步骤表与历史会话，点击步骤或按
+        <kbd>Enter</kbd> 跳转；回放不重新请求 LM Studio。导出接口
+        <code>GET /api/sessions/{id}/export</code> 返回 JSONL，一行一个步骤（含 probe 快照）。
+        桌面版通过 pywebview 原生保存对话框写文件，浏览器版回退 Blob 下载，页面底部会显示结果提示。</p>
+    </section>
+
+    <section id="native">
+      <h2>原生精确模式</h2>
+      <p>原生精确模式在 LLM-Xray 后端进程内用 Transformers 加载本地 HF 因果模型，逐 Token 生成。
+        Token、top-k、隐藏状态、注意力、Tuned Lens、残差与投影来自<strong>同一次前向</strong>，
+        probe 标记 <code>surrogate=false</code>，界面显示“精确张量”。这正是它和替代透镜的根本
+        区别：不是另一个模型对同一段文本的猜测，而是生成 Token 的那个模型自己的内部状态。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>项</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>引擎切换</td><td>顶栏“引擎”选择“原生精确”，设置页加载/卸载模型并查看状态</td></tr>
+            <tr><td>默认模型</td><td><code>Qwen/Qwen2.5-0.5B-Instruct</code>，复用 <code>models/lens/</code> 本地权重</td></tr>
+            <tr><td>依赖</td><td>PyTorch + Transformers + 本地权重；应用不自动下载</td></tr>
+            <tr><td>设备与速度</td><td>CPU 2 线程、float32；0.5B 首次加载约 20-30 秒，生成明显慢于 LM Studio</td></tr>
+            <tr><td>并发</td><td>同一时间只允许一个原生生成会话，冲突返回 <code>BUSY</code></td></tr>
+            <tr><td>模型规模</td><td>0.5B 可用，1.5B 明显变慢；8B 的 FP32 权重约 32 GB，普通 16GB 机器不现实</td></tr>
+            <tr><td>量化</td><td>当前不支持 4bit 加载；原生通道用 CPU float32 保证张量精确</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="edge">
+        <span class="note-title">精确张量不等于因果解释</span>
+        <p>“同一模型、同一次前向”只保证数据来源精确，不保证注意力权重、头分类、稀疏特征或残差
+          归因能解释输出因果。它们仍是启发式与近似方法，解读边界见
+          <a href="INTERPRETABILITY.md">INTERPRETABILITY.md</a>。</p>
+      </div>
+    </section>
+
+    <section id="performance">
+      <h2>性能建议</h2>
+      <p>观测不应改变被观测对象。LM Studio 模式的 WebSocket 开销很小；主要开销来自替代透镜前向、
+        UMAP 拟合与 3D 渲染；原生精确模式本身就是 CPU 推理，慢是预期行为。按收益从高到低：</p>
+      <ol>
+        <li>不要同时开启 LM Studio 与原生精确模型；两种引擎用完在设置页卸载。</li>
+        <li>关闭“允许透镜采样”，或在设置页卸载透镜：这是 LM Studio 模式下最大的额外开销。</li>
+        <li>原生模式优先用 0.5B；1.5B 已明显变慢，8B 不建议在普通机器上尝试。</li>
+        <li>生成期间不要拖动 3D 视图或频繁切换层与步骤；高频交互会与生成渲染竞争主线程。</li>
+        <li>关闭声化与 CRT 覆膜；开启系统 <code>prefers-reduced-motion</code> 时动画自动降级。</li>
+        <li>关闭“生成时检索”，避免每轮都做 embedding 查询；透镜就绪后再打开。</li>
+      </ol>
+      <p>后端指标约 1.5 秒采样一次，GPU 通过 <code>nvidia-smi</code> 子进程获取，失败返回
+        <code>null</code> 而不阻塞。生成期间后端不做同步磁盘写，会话完成后落盘。</p>
+    </section>
+
+    <section id="architecture">
+      <h2>运行时与观测通道</h2>
+      <pre class="diagram ascii"><code>+----------------------+     HTTP / SSE      +---------------------------+
+|  LM Studio 0.4.x     | &lt;----------------&gt; |  FastAPI backend          |
+|  127.0.0.1:1234      |  responses (first)  |  backend/xray/            |
+|  real tokens/probs   |  chat/completions   |  - LM Studio adapter      |
++----------------------+  embeddings (RAG)   |  - sessions / replay      |
+                                             |  - RAG / metrics          |
++----------------------+   in-process       |  - native_bridge (exact)  |
+|  native exact model  | -----------------&gt;  +-------------+-------------+
+|  local HF weights    |  token + probe                    |
+|  CPU, float32        |  (surrogate=false)                | WebSocket /ws
++----------------------+                                   | JSON frames
+                                                           v
++----------------------+   optional local PyTorch  +---------------------------+
+|  surrogate lens      | -----------------------&gt; |  React UI                 |
+|  Qwen2.5-0.5B, CPU   |  hidden / attention /     |  pywebview + WebView2     |
+|  default unloaded    |  tuned lens / residual    |  Canvas / SVG / Three.js  |
++----------------------+  features / UMAP          +---------------------------+</code></pre>
+
+      <p>三种引擎互斥：LM Studio、原生精确、演示。LM Studio 模式下替代透镜可选且不阻塞生成；
+        原生精确模式不运行替代透镜 worker，probe 与生成来自同一次前向；demo 用合成数据。原生通道
+        同一时间只允许一个生成会话，避免进程内两个前向同时占满 CPU/内存。</p>
+
+      <h3>LM Studio 适配优先级</h3>
+      <ol>
+        <li><code>POST /v1/responses</code>：SSE，<code>stream=true</code>，
+          <code>include=["message.output_text.logprobs"]</code>，<code>top_logprobs=12</code>，
+          <code>store=false</code>。唯一能同时拿到文本与 top_logprobs 的官方路径。</li>
+        <li><code>POST /v1/chat/completions</code>：<code>stream=true</code>，
+          <code>logprobs=true</code>，<code>top_logprobs=12</code>，额外传 <code>top_k</code> 与
+          <code>repeat_penalty</code>。</li>
+        <li><code>POST /api/v1/chat</code>：原生 SSE，无 logprobs，只用于文本与推理流。</li>
+      </ol>
+      <p>只有在 HTTP 400/404/405 或明确的 "unsupported parameter" 时才降级；连接超时不降级，直接报
+        <code>LMSTUDIO_UNREACHABLE</code>，避免在模型加载期间反复无效请求。启动应用与读取模型列表
+        不会加载模型。即使接口成功，实际流也可能没有 <code>top_logprobs</code>：前 5 个回答 Token
+        都没有 top-k 时发送 <code>status(scope=runtime, state=no_logprobs)</code> 并标记会话
+        <code>logprobs=false</code>，不会自动重发请求。</p>
+
+      <h3>事件流</h3>
+      <pre><code>client  {"type":"start","payload":{...}}
+server  {"type":"started","session":{...}}
+server  {"type":"rag","items":[...]}                 (optional)
+server  {"type":"token","step":{...}}                every token
+server  {"type":"probe","step":N,"probe":{...}}      every 2 tokens
+server  {"type":"projection","projection":{...}}     every 8 tokens
+server  {"type":"metrics","metrics":{...}}           about every 1.5 s
+server  {"type":"status","scope":"native",...}       native load / prefill
+server  {"type":"done","usage":{...},"exact":bool}</code></pre>
+      <p>v1 内事件只做向后兼容的新增：不删字段、不改语义，新增字段必须可缺省。完整字段表见
+        <a href="API.md">API.md</a>。</p>
+
+      <h3>线程与性能预算</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>项</th><th>预算 / 策略</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>指标采样</td><td>约 1.5 秒一次，GPU 子进程带超时</td></tr>
+            <tr><td>probe 频率</td><td>默认每 2 个 Token，可配置放宽</td></tr>
+            <tr><td>projection 频率</td><td>默认每 8 个 Token 重新拟合</td></tr>
+            <tr><td>透镜推理</td><td>CPU 2 线程，进程优先级低于正常，懒加载</td></tr>
+            <tr><td>原生精确推理</td><td>CPU 2 线程、float32、local_files_only；同一时间一个会话</td></tr>
+            <tr><td>队列策略</td><td>透镜模式落后时丢弃旧探测，只保留最新</td></tr>
+            <tr><td>UI 更新</td><td>Canvas / CSS transform，不整页重渲染</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="interpretability">
+      <h2>可解释性方法</h2>
+      <p>方法分两类数据来源：LM Studio 模式下的“替身观测”，以及原生精确模式下的“同一次前向”。
+        无论来源如何，它们能生成假设，不能直接给出因果结论。完整版见
+        <a href="INTERPRETABILITY.md">INTERPRETABILITY.md</a>。</p>
+
+      <h3>Tuned Lens 与 Logit Lens</h3>
+      <p>Tuned Lens 假设存在逐层仿射映射 <code>h'_l = h_l @ W_l + b_l</code>，把第 l 层隐藏状态
+        翻译到最终层坐标系，再应用最终 LayerNorm 与 <code>lm_head</code> 解码。translator 用岭回归
+        在本地校准语料上闭式求解。Logit Lens 省略 translator，直接把最终 LayerNorm 与
+        <code>lm_head</code> 套到中间层；浅层通常不可靠，作为对照基线保留。</p>
+      <p><code>agreement</code> 是 Tuned Lens 在该层对校准语料的 top-1 预测与校准目标的 top-1
+        一致率（目标在最终输出空间解码），不是准确率、不是置信度，也不能跨模型比较。参考
+        <a href="https://github.com/AlignmentResearch/tuned-lens">AlignmentResearch/tuned-lens</a>
+        与 <a href="https://transformer-circuits.pub/">Transformer Circuits Thread</a>。</p>
+
+      <h3>注意力</h3>
+      <p>用 eager attention 与 KV cache 逐 Token 增量前向，捕获每个头对上下文的注意力行。注意力
+        权重只表示读取强度，不表示因果重要性；头分类是启发式统计，不是人工标注。参考
+        arXiv:1905.09418、arXiv:1906.04341。</p>
+
+      <h3>残差贡献</h3>
+      <p>分别捕获 attention/MLP 分支输出，计算 L2 范数，并把分支增量经最终 LayerNorm 的一阶近似
+        投影到词表方向，得到对当前选中 Token 的 signed logit 贡献。忽略 LayerNorm 非线性与后续层
+        交互，不能把数值相加当成完整 logit 分解。</p>
+
+      <h3>稀疏特征与 UMAP</h3>
+      <p>默认稀疏特征是 MLP 神经元探针（<code>probe</code>），不是 SAE；只有匹配 checkpoint 的
+        SAE 适配器才标注 <code>sae</code>。UMAP 只保留局部邻域结构，坐标每次重新拟合都会改变，
+        不能当作语义距离度量。UMAP 文档：
+        <a href="https://umap-learn.readthedocs.io/">umap-learn.readthedocs.io</a>。</p>
+
+      <div class="edge">
+        <span class="note-title">正确解读</span>
+        <p>可以做：同模型、同校准、同会话内比较趋势；用概率云判断解码分布形状；用 JSONL 做离线
+          统计；把面板当作假设生成器。</p>
+        <p>不要做：把替代模型结果说成目标模型内部状态；从注意力推断因果；用单层 top-1 词解释最终
+          输出；跨模型比较绝对值。</p>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <h2>隐私与数据</h2>
+      <ul>
+        <li>后端默认只监听 <code>127.0.0.1</code>，不提供公网访问、鉴权或多用户设计。</li>
+        <li>应用不包含云 API 客户端；对话、会话、遥测与指标都不上传。</li>
+        <li>RAG embedding 调用本机 LM Studio 的 <code>/v1/embeddings</code>，不经过第三方服务。</li>
+        <li>模型、校准缓存、会话与导出文件都在本机 <code>data/</code>、<code>models/</code> 目录。</li>
+        <li>原生精确通道以 <code>local_files_only</code> 读取本地权重，不联网、不自动下载。</li>
+        <li>唯一的外部网络行为是用户显式运行模型下载脚本；应用不会自动下载模型。</li>
+        <li>LM Studio 自身的网络行为由 LM Studio 设置决定，不属于本应用控制范围。</li>
+      </ul>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>路径</th><th>内容</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>memory/</code></td><td>RAG 记忆库 Markdown</td><td>用户维护</td></tr>
+            <tr><td><code>data/sessions/*.jsonl</code></td><td>会话步骤与 probe 快照</td><td>运行期生成，git 忽略</td></tr>
+            <tr><td><code>data/sessions/*.meta.json</code></td><td>会话元信息</td><td>运行期生成，git 忽略</td></tr>
+            <tr><td><code>data/cache/</code></td><td>Tuned Lens 校准缓存</td><td>删除后重新校准</td></tr>
+            <tr><td><code>data/server.log</code></td><td>启动器启动的后端日志</td><td>排错用</td></tr>
+            <tr><td><code>models/lens/</code></td><td>本地模型（替代透镜/原生精确共用）</td><td>用户显式获取</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="limitations">
+      <h2>限制与排错</h2>
+      <h3>核心限制</h3>
+      <ul>
+        <li><strong>接口边界</strong>：LM Studio 不暴露内部张量，替身观测不是目标模型内部状态。</li>
+        <li><strong>top_logprobs 可能缺失</strong>：部分 LM Studio 流不返回 top-k，概率云为空；界面会
+          提示切换到原生精确模式。</li>
+        <li><strong>模型不同</strong>：默认透镜是 Qwen2.5-0.5B，与 DeepSeek-R1-distill-8B 不同架构、
+          不同词表；只有 <code>same-weights</code> 路径能拿到同一权重的数据。</li>
+        <li><strong>512 已修复</strong>：v1.2.0 默认最大输出 4096 并提供滑块；仍受模型上下文限制。</li>
+        <li><strong>原生 8B 不现实</strong>：CPU float32 下 8B 权重约 32 GB，普通 16GB 机器无法加载；
+          且当前不支持 4bit。</li>
+        <li><strong>概率云截断</strong>：只含 top-k（<code>top_logprobs=12</code>）候选，概率经过重新
+          归一化。</li>
+        <li><strong>KV 是估算</strong>：按模型配置推算，<code>estimated</code> 为 true，不等同实际显存。</li>
+        <li><strong>MoE / SAE 未内置</strong>：默认透镜是 dense 模型；稀疏特征是探针不是 SAE。</li>
+        <li><strong>资源竞争</strong>：透镜与 LM Studio 争内存、显存与 CPU；原生模式与 LM Studio 同时
+          运行也会互相拖慢。</li>
+        <li><strong>导出保存</strong>：桌面版用系统保存对话框，浏览器版用 Blob 下载；导出结果有提示。</li>
+        <li><strong>模型未加载</strong>：LM Studio 不会自动加载模型；原生模型也不会自动下载。</li>
+        <li><strong>参数时序</strong>：采样参数只影响显示重算与下一次请求。</li>
+      </ul>
+
+      <h3>常见问题</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>现象</th><th>先检查</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>LM Studio 不可达</td><td>Local Server 是否启动、端口 1234、模型是否加载</td></tr>
+            <tr><td>发送即报错</td><td>模型名是否一致、模型是否仍在加载</td></tr>
+            <tr><td>概率云为空</td><td>LM Studio 是否返回 logprobs；看 no-logprobs 提示或切换原生精确模式</td></tr>
+            <tr><td>生成停在 512</td><td>是否旧构建/旧本地存储；v1.2.0 默认 4096，可在采样面板调整</td></tr>
+            <tr><td>导出没反应</td><td>是否桌面启动器窗口；看底部导出提示与 data/server.log</td></tr>
+            <tr><td>原生模式很慢</td><td>CPU 推理的正常现象；换 0.5B 或改用 LM Studio</td></tr>
+            <tr><td>透镜一直 loading</td><td>透镜依赖、模型文件、界面开关</td></tr>
+            <tr><td>没有 probe 步骤</td><td>透镜队列落后会丢弃旧探测，部分步骤没有 probe 是正常的</td></tr>
+            <tr><td>点云静止</td><td>UMAP 节流设计，或点数不足时退化为 PCA</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>完整清单与解释见 <a href="LIMITATIONS.md">LIMITATIONS.md</a>。</p>
+    </section>
+
+    <section id="versions">
+      <h2>版本与发布</h2>
+      <p>版本号遵循 SemVer。正式版本打 annotated tag <code>v&lt;version&gt;</code>，并在
+        <a href="../CHANGELOG.md">CHANGELOG.md</a> 中记录 Added / Changed / Fixed / Security。
+        v1 内协议只做向后兼容的新增。完整策略见 <a href="VERSIONS.md">VERSIONS.md</a>。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>版本</th><th>日期</th><th>类型</th><th>要点</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1.2.0</td><td>2026-10-27</td><td>正式版</td>
+              <td>模型上下文上限、Estimated Memory Usage、CUDA/CPU 设备选择</td>
+            </tr>
+            <tr>
+              <td>1.1.0</td><td>2026-10-23</td><td>正式版</td>
+              <td>原生精确通道、导出原生保存、no-logprobs 警告、默认 4096、Tuned Lens 缓存、中文 Token 解码、ModelScope 回退</td>
+            </tr>
+            <tr>
+              <td>1.0.0</td><td>2026-10-21</td><td>正式版</td>
+              <td>首个正式版本：LM Studio 通道 + 替代透镜、概率云、透镜面板、回放与导出、暖色文档站、版本与发布脚本</td>
+            </tr>
+            <tr>
+              <td>0.9.0</td><td>开发里程碑</td><td>前史</td>
+              <td>视觉与回放：注意力热图、3D 向量云、时间回放；未对外发布</td>
+            </tr>
+            <tr>
+              <td>0.5.0</td><td>开发里程碑</td><td>前史</td>
+              <td>双通道：真实遥测 + 可选替代透镜；未对外发布</td>
+            </tr>
+            <tr>
+              <td>0.1.0</td><td>开发里程碑</td><td>前史</td>
+              <td>脚手架：FastAPI、React 外壳、事件协议与目录结构；未对外发布</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>发布检查</h3>
+      <pre><code>powershell -ExecutionPolicy Bypass -File scripts\check-version.ps1
+powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -DryRun</code></pre>
+      <p>发布脚本校验 <code>VERSION</code>、<code>apps/desktop/package.json</code>、
+        <code>CHANGELOG.md</code> 与 <code>docs/VERSIONS.md</code> 一致，要求工作区干净，运行前端构建
+        与后端 pytest，通过后才创建 annotated tag；失败即退出。</p>
+    </section>
+
+    <section id="docs">
+      <h2>文档索引</h2>
+      <ul class="doc-index">
+        <li><a href="USAGE.md">USAGE.md</a><p>完整使用说明：启动、界面、采样、图表、回放、导出、性能。</p></li>
+        <li><a href="ARCHITECTURE.md">ARCHITECTURE.md</a><p>运行时与观测通道、原生精确通道、适配优先级、事件流、性能预算、隐私。</p></li>
+        <li><a href="INTERPRETABILITY.md">INTERPRETABILITY.md</a><p>Tuned Lens、注意力、残差、稀疏特征、UMAP 的原理与误读风险。</p></li>
+        <li><a href="API.md">API.md</a><p>REST、WebSocket、Probe 字段表、示例与错误码。</p></li>
+        <li><a href="LIMITATIONS.md">LIMITATIONS.md</a><p>限制、常见问题与排错。</p></li>
+        <li><a href="VERSIONS.md">VERSIONS.md</a><p>版本策略、发布流程与版本表。</p></li>
+        <li><a href="SPEC.md">SPEC.md</a><p>v1.0.0 实现契约与技术规格；v1.2.0 增量见 CHANGELOG/API/ARCHITECTURE。</p></li>
+        <li><a href="../CHANGELOG.md">CHANGELOG.md</a><p>变更记录。</p></li>
+        <li><a href="../README.md">README.md</a><p>项目简介、快速开始与第三方依赖说明。</p></li>
+      </ul>
+      <div class="note">
+        <span class="note-title">本页说明</span>
+        <p>本页是静态文档首页，可直接用 <code>file://</code> 打开，仅引用同目录的
+          <code>docs.css</code>，无外部字体、脚本或图片。Markdown 文档是内容的源文件，本页为同步的
+          暖色阅读版；两者内容不一致时，以 Markdown 与 <code>docs/SPEC.md</code> 为准。</p>
+      </div>
+    </section>
+  </article>
+
+  <footer>
+    <p>LLM-Xray v1.2.0 · 文档最后同步：2026-10-27 · 本地优先，无云调用。</p>
+    <p>替代透镜结果不是被观测模型的内部状态；原生精确张量来自你加载的本地模型。使用前请阅读
+      <a href="LIMITATIONS.md">限制</a> 与 <a href="INTERPRETABILITY.md">可解释性说明</a>。</p>
+    <p>暖色面板：深炭 #17130f · 羊皮纸 #f2e7d5 · 铜 #d08a4e · 橄榄 #9aa36b。无 emoji，无渐变。</p>
+  </footer>
+</main>
+</div>
+
+<a class="back-top" href="#top">回到顶部</a>
+
+<script>
+(function () {
+  var toc = document.getElementById("toc");
+  var mq = window.matchMedia("(max-width: 900px)");
+  function sync() {
+    if (mq.matches) {
+      toc.removeAttribute("open");
+    } else {
+      toc.setAttribute("open", "");
+    }
+  }
+  sync();
+  if (mq.addEventListener) {
+    mq.addEventListener("change", sync);
+  } else if (mq.addListener) {
+    mq.addListener(sync);
+  }
+})();
+</script>
+</body>
+</html>

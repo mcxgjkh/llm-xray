@@ -1,0 +1,50 @@
+/* LLM-Xray warm observatory tokens.
+   Palette derived from a dark data terminal and re-tinted to copper, ash and parchment.
+   One ground, one ink, one accent. Colour belongs to data, not chrome. */
+:root {
+  --ground: #17130f;
+  --surface: #1c1712;
+  --surface-2: #211a14;
+  --raised: #271f17;
+  --raised-2: #2f251b;
+  --ink: #f2e7d5;
+  --ink-strong: #fff8ec;
+  --muted: #a89780;
+  --faint: #7c6b59;
+  --line: #33291f;
+  --line-strong: #49392a;
+  --accent: #d08a4e;
+  --accent-soft: #e8b57a;
+  --accent-deep: #9c5a2e;
+  --attention: #d08a4e;
+  --mlp: #9aa36b;
+  --positive: #8faa76;
+  --negative: #c96a50;
+  --warning: #d8b36a;
+  --reasoning: #b9a98e;
+
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
+    "PingFang SC", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Songti SC", "STSong", "SimSun", Georgia,
+    serif;
+  --font-data: "Cascadia Mono", "Consolas", "SFMono-Regular", "Menlo", monospace;
+
+  --fs-display: 30px;
+  --fs-title: 22px;
+  --fs-section: 17px;
+  --fs-card: 14px;
+  --fs-body: 13px;
+  --fs-small: 12px;
+  --fs-micro: 11px;
+
+  --gap: 14px;
+  --pad: 18px;
+  --pad-tight: 12px;
+  --rail: 58px;
+  --topbar: 50px;
+  --chat-width: 380px;
+  --radius: 7px;
+  --radius-small: 4px;
+  --control-height: 32px;
+  --row: 30px;
+}
